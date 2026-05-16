@@ -1,0 +1,6 @@
+{
+  "name": "Deriv Real-Time Trading Interface",
+  "description": "High-performance real-time trading interface using Deriv WebSocket API featuring SMI Ergodic and multiple indicators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
