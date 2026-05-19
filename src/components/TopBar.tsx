@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, Activity, Settings, Wifi, WifiOff, ArrowUpDown } from 'lucide-react';
+import { HorizontalLineToolbar } from './HorizontalLineTools';
 
 function LiveClock() {
   const [time, setTime] = useState(new Date());
@@ -107,6 +108,7 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-3">
+        <HorizontalLineToolbar symbol={selectedSymbol} />
         <button 
           onClick={() => setIsSwapped(!isSwapped)}
           className={cn(
@@ -149,6 +151,7 @@ export function TopBar({
                      ind === 'STDSMI' ? 'Stochastic Momentum Index' :
                      ind === 'MAENV' ? 'Moving Average Envelope' :
                      ind === 'TWOPOLE' ? 'Two-Pole Oscillator' :
+                     ind === 'MSMT' ? 'Market Structure Trend Matrix' :
                      ind === 'PSAR' ? 'Parabolic SAR' : ind}
                   </span>
                   {activeIndicators[ind] && <div className="w-2 h-2 rounded-full bg-blue-500" />}
@@ -259,6 +262,16 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                   <h4 className="text-sm font-medium text-yellow-400">Two-Pole Oscillator</h4>
                   <div className="grid grid-cols-1 gap-2">
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Filter Length <input type="number" value={settings.TWOPOLE_FILTER_LENGTH} onChange={e => update('TWOPOLE_FILTER_LENGTH', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#22c55e]">Market Structure Trend Matrix</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">ATR Length <input type="number" value={settings.MSMT_ATR_LENGTH} onChange={e => update('MSMT_ATR_LENGTH', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">ATR Mult <input type="number" step="0.1" value={settings.MSMT_ATR_MULT} onChange={e => update('MSMT_ATR_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Left Bars <input type="number" value={settings.MSMT_LEFT_BARS} onChange={e => update('MSMT_LEFT_BARS', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Right Bars <input type="number" value={settings.MSMT_RIGHT_BARS} onChange={e => update('MSMT_RIGHT_BARS', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                   </div>
                 </div>
 

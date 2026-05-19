@@ -20,6 +20,10 @@ export type IndicatorSettings = {
   MAENV_PERIOD: number;
   MAENV_PERCENT: number;
   TWOPOLE_FILTER_LENGTH: number;
+  MSMT_ATR_LENGTH: number;
+  MSMT_ATR_MULT: number;
+  MSMT_LEFT_BARS: number;
+  MSMT_RIGHT_BARS: number;
   MA_PERIOD: number;
   RSI_PERIOD: number;
   BB_PERIOD: number;
@@ -74,6 +78,7 @@ export default function App() {
     STDSMI: false,
     MAENV: false,
     TWOPOLE: false,
+    MSMT: true
   };
 
   const [activeIndicators, setActiveIndicators] = useState<Record<string, boolean>>(() => {
@@ -98,6 +103,10 @@ export default function App() {
     MAENV_PERIOD: 20,
     MAENV_PERCENT: 5,
     TWOPOLE_FILTER_LENGTH: 14,
+    MSMT_ATR_LENGTH: 14,
+    MSMT_ATR_MULT: 3.0,
+    MSMT_LEFT_BARS: 5,
+    MSMT_RIGHT_BARS: 5,
     MA_PERIOD: 20,
     RSI_PERIOD: 14,
     BB_PERIOD: 20,
@@ -118,7 +127,8 @@ export default function App() {
       zmacdMacd: '#3b82f6', zmacdSignal: '#f59e0b', zmacdHistUp: '#10b981', zmacdHistDown: '#ef4444',
       maenvUpper: '#3b82f6', maenvLower: '#3b82f6',
       stochK: '#06b6d4', stochD: '#f59e0b',
-      twopoleBull: '#3b82f6', twopoleBear: '#a855f7', twopoleSignal: '#f59e0b'
+      twopoleBull: '#3b82f6', twopoleBear: '#a855f7', twopoleSignal: '#f59e0b',
+      msmtTrailingUp: '#22c55e', msmtTrailingDown: '#ec4899', msmtTarget: '#eab308'
     },
     visibility: {
       ma: true, rsi: true, bbUpper: true, bbLower: true, psar: true,
@@ -127,14 +137,23 @@ export default function App() {
       zmacdMacd: true, zmacdSignal: true, zmacdHist: true,
       maenvUpper: true, maenvLower: true,
       stochK: true, stochD: true,
-      twopoleInvalidation: true, twopoleSignal: true, twopoleOscillator: true
+      twopoleInvalidation: true, twopoleSignal: true, twopoleOscillator: true,
+      msmtTrailingLine: true, msmtTargets: true
     }
   };
 
   const [indicatorSettings, setIndicatorSettings] = useState<IndicatorSettings>(() => {
     try {
       const saved = localStorage.getItem('indicatorSettings');
-      if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { 
+          ...defaultSettings, 
+          ...parsed,
+          colors: { ...defaultSettings.colors, ...(parsed.colors || {}) },
+          visibility: { ...defaultSettings.visibility, ...(parsed.visibility || {}) }
+        };
+      }
     } catch(e){}
     return defaultSettings;
   });
@@ -276,6 +295,7 @@ export default function App() {
                 settings={indicatorSettings}
                 zoomLevel={zoomLevel}
                 scrollOffset={scrollOffset}
+                symbol={selectedSymbol}
               />
             </div>
 
@@ -296,4 +316,3 @@ export default function App() {
     </div>
   );
 }
-

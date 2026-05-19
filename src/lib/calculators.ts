@@ -6,6 +6,91 @@ export interface CandleData {
   close: number;
 }
 
+export interface LuxPivotLine {
+  type: 'support' | 'resistance';
+  idx: number;
+  epoch: number;
+  price: number;
+  brokenIdx: number | null;
+  brokenEpoch: number | null;
+}
+
+export function calculateLuxAlgoSR(data: CandleData[], leftBars: number, rightBars: number): LuxPivotLine[] {
+  const lines: LuxPivotLine[] = [];
+  if (!data || data.length < leftBars + rightBars + 1) return lines;
+
+  for (let i = leftBars; i < data.length - rightBars; i++) {
+    const currentHigh = data[i].high;
+    const currentLow = data[i].low;
+    
+    // Check Resistance (Pivot High)
+    let isPivotHigh = true;
+    for (let j = 1; j <= leftBars; j++) {
+      if (data[i - j].high >= currentHigh) { isPivotHigh = false; break; }
+    }
+    if (isPivotHigh) {
+      for (let j = 1; j <= rightBars; j++) {
+        if (data[i + j].high > currentHigh) { isPivotHigh = false; break; }
+      }
+    }
+    
+    // Check Support (Pivot Low)
+    let isPivotLow = true;
+    for (let j = 1; j <= leftBars; j++) {
+      if (data[i - j].low <= currentLow) { isPivotLow = false; break; }
+    }
+    if (isPivotLow) {
+      for (let j = 1; j <= rightBars; j++) {
+        if (data[i + j].low < currentLow) { isPivotLow = false; break; }
+      }
+    }
+
+    if (isPivotHigh) {
+      lines.push({
+        type: 'resistance',
+        idx: i,
+        epoch: data[i].epoch,
+        price: currentHigh,
+        brokenIdx: null,
+        brokenEpoch: null
+      });
+    }
+
+    if (isPivotLow) {
+      lines.push({
+        type: 'support',
+        idx: i,
+        epoch: data[i].epoch,
+        price: currentLow,
+        brokenIdx: null,
+        brokenEpoch: null
+      });
+    }
+  }
+
+  // Detect breaks
+  for (const line of lines) {
+    const startCheck = line.idx + rightBars; 
+    for (let k = startCheck; k < data.length; k++) {
+      if (line.type === 'resistance') {
+        if (data[k].close > line.price) {
+          line.brokenIdx = k;
+          line.brokenEpoch = data[k].epoch;
+          break;
+        }
+      } else {
+        if (data[k].close < line.price) {
+          line.brokenIdx = k;
+          line.brokenEpoch = data[k].epoch;
+          break;
+        }
+      }
+    }
+  }
+
+  return lines;
+}
+
 export function calculateEMA(data: number[], period: number): number[] {
   if (!data || data.length === 0 || period <= 0) return [];
   const k = 2 / (period + 1);
@@ -490,5 +575,135 @@ export function calculateTwoPole(data: CandleData[], period = 14) {
   bearishCrossover.unshift(false);
 
   return { oscillator, signal, bullishCrossover, bearishCrossover, invalidationLine, invalidatedFlags };
+}
+
+export function calculateMSMT(data: CandleData[], atrPeriod = 14, atrMult = 3.0, leftBars = 5, rightBars = 5) {
+  const atr = calculateATR(data, atrPeriod);
+  
+  const isSwingHigh = new Array(data.length).fill(false);
+  const isSwingLow = new Array(data.length).fill(false);
+  
+  for (let i = leftBars + rightBars; i < data.length; i++) {
+    const pivotIdx = i - rightBars;
+    let highOk = true;
+    let lowOk = true;
+    for (let j = 1; j <= leftBars; j++) {
+      if (data[pivotIdx - j].high >= data[pivotIdx].high) highOk = false;
+      if (data[pivotIdx - j].low <= data[pivotIdx].low) lowOk = false;
+    }
+    for (let j = 1; j <= rightBars; j++) {
+      if (data[pivotIdx + j].high > data[pivotIdx].high) highOk = false;
+      if (data[pivotIdx + j].low < data[pivotIdx].low) lowOk = false;
+    }
+    isSwingHigh[pivotIdx] = highOk;
+    isSwingLow[pivotIdx] = lowOk;
+  }
+  
+  const trailingLine: (number | null)[] = new Array(data.length).fill(null);
+  const trailingDir: (1 | -1 | null)[] = new Array(data.length).fill(null);
+  const chochLine: ('bull' | 'bear' | null)[] = new Array(data.length).fill(null);
+  const activeTargets: { price: number, level: number, breakoutPrice: number }[][] = new Array(data.length).fill([]);
+  
+  let trend: 1 | -1 | null = null;
+  let lastSwingHigh: number | null = null;
+  let lastSwingLow: number | null = null;
+  
+  let currentTrailingLine: number | null = null;
+  let currentTargets: { price: number, level: number, breakoutPrice: number }[] = [];
+  let maxTargetLevelActive = 0;
+  let targetStepDist = 0;
+  
+  for (let i = 0; i < data.length; i++) {
+    // Check if rightBars ago was a swing, so we only know it NOW
+    if (i >= rightBars) {
+      const checkIdx = i - rightBars;
+      if (isSwingHigh[checkIdx]) {
+        lastSwingHigh = data[checkIdx].high;
+      }
+      if (isSwingLow[checkIdx]) {
+        lastSwingLow = data[checkIdx].low;
+      }
+    }
+    
+    // Check CHoCH
+    let chochTriggered = false;
+    if (trend === null) {
+      if (lastSwingLow !== null && data[i].close < lastSwingLow) {
+        trend = -1;
+        chochLine[i] = 'bear';
+        chochTriggered = true;
+      } else if (lastSwingHigh !== null && data[i].close > lastSwingHigh) {
+        trend = 1;
+        chochLine[i] = 'bull';
+        chochTriggered = true;
+      }
+    } else if (trend === 1) {
+      if (lastSwingLow !== null && data[i].close < lastSwingLow) {
+        trend = -1;
+        chochLine[i] = 'bear';
+        chochTriggered = true;
+      }
+    } else if (trend === -1) {
+      if (lastSwingHigh !== null && data[i].close > lastSwingHigh) {
+        trend = 1;
+        chochLine[i] = 'bull';
+        chochTriggered = true;
+      }
+    }
+    
+    // Setup targets and reset trailing line on ChoCH
+    if (chochTriggered) {
+      const currentAtr = isNaN(atr[i]) ? (data[i].high - data[i].low) : atr[i];
+      targetStepDist = currentAtr * atrMult;
+      
+      if (trend === 1) {
+        // Bullish CHoCH -> trailing starts below
+        currentTrailingLine = data[i].close - currentAtr * atrMult;
+        currentTargets = [{ price: data[i].close + targetStepDist, level: 1, breakoutPrice: data[i].close }];
+      } else {
+        // Bearish CHoCH -> trailing starts above
+        currentTrailingLine = data[i].close + currentAtr * atrMult;
+        currentTargets = [{ price: data[i].close - targetStepDist, level: 1, breakoutPrice: data[i].close }];
+      }
+      maxTargetLevelActive = 1;
+    } else {
+      // Update trailing line
+      const currentAtr = isNaN(atr[i]) ? 0 : atr[i];
+      if (trend === 1) {
+        const potentialLine = data[i].close - currentAtr * atrMult;
+        if (currentTrailingLine === null) {
+           currentTrailingLine = potentialLine;
+        } else {
+           currentTrailingLine = Math.max(currentTrailingLine, potentialLine);
+        }
+      } else if (trend === -1) {
+        const potentialLine = data[i].close + currentAtr * atrMult;
+        if (currentTrailingLine === null) {
+           currentTrailingLine = potentialLine;
+        } else {
+           currentTrailingLine = Math.min(currentTrailingLine, potentialLine);
+        }
+      }
+      
+      // Check target progression
+      if (trend === 1 && currentTargets.length > 0) {
+        if (data[i].close >= currentTargets[currentTargets.length - 1].price) {
+          maxTargetLevelActive++;
+          currentTargets.push({ price: currentTargets[0].price + (maxTargetLevelActive - 1) * targetStepDist, level: maxTargetLevelActive, breakoutPrice: currentTargets[0].breakoutPrice });
+        }
+      } else if (trend === -1 && currentTargets.length > 0) {
+        if (data[i].close <= currentTargets[currentTargets.length - 1].price) {
+          maxTargetLevelActive++;
+          currentTargets.push({ price: currentTargets[0].price - (maxTargetLevelActive - 1) * targetStepDist, level: maxTargetLevelActive, breakoutPrice: currentTargets[0].breakoutPrice });
+        }
+      }
+    }
+    
+    trailingLine[i] = currentTrailingLine;
+    trailingDir[i] = trend;
+    activeTargets[i] = [...currentTargets];
+  }
+  
+  return { trailingLine, trailingDir, chochLine, activeTargets };
 }
 

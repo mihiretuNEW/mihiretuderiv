@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
-import { ResponsiveContainer, ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, Scatter, ReferenceLine } from 'recharts';
-import { CandleData, calculateSMA, calculateRSI, calculateBollingerBands, calculateParabolicSAR, calculateStochRSI, calculateATRFibEnvelopes, calculateMAEnvelope, calculateTwoPole } from '../lib/calculators';
+import { ResponsiveContainer, ComposedChart, Bar, Line, Area, XAxis, YAxis, Tooltip, Scatter, ReferenceLine, Customized } from 'recharts';
+import { CandleData, calculateSMA, calculateRSI, calculateBollingerBands, calculateParabolicSAR, calculateStochRSI, calculateATRFibEnvelopes, calculateMAEnvelope, calculateTwoPole, calculateMSMT } from '../lib/calculators';
+import { HorizontalLinesOverlay, useHLineStore } from './HorizontalLineTools';
 import type { IndicatorSettings } from '../App';
 
 interface BottomChartProps {
@@ -9,7 +10,38 @@ interface BottomChartProps {
   settings: IndicatorSettings;
   zoomLevel: number;
   scrollOffset: number;
+  symbol: string;
 }
+
+const MSMTOverlay = ({ yAxisMap, width, data }: any) => {
+  if (!yAxisMap || !yAxisMap.main) return null;
+  const scale = yAxisMap.main.scale;
+
+  // Let's find the last data point with MSMT data
+  const lastValid = data && data.length > 0 ? [...data].reverse().find(d => d.epoch > 0) : null;
+  if (!lastValid || !lastValid.msmtTargets || lastValid.msmtTargets.length === 0) return null;
+
+  return (
+    <g className="msmt-targets-overlay">
+      {lastValid.msmtTargets.map((t: any) => {
+        const y = scale(t.price);
+        if (y === undefined || isNaN(y)) return null;
+        
+        let diffPct = 0;
+        if (t.breakoutPrice) { 
+            diffPct = ((t.price - t.breakoutPrice) / t.breakoutPrice) * 100;
+        }
+
+        return (
+          <g key={`msmt-tgt-overlay-${t.level}`}>
+            <rect x={width - 100} y={y - 8} width={100} height={16} fill="#eab308" rx={2} fillOpacity={0.8}/>
+            <text x={width - 50} y={y + 3} fill="#111" fontSize={9} fontWeight="bold" textAnchor="middle">{`Target ${t.level} (${diffPct > 0 ? '+' : ''}${diffPct.toFixed(2)}%)`}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+};
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -60,7 +92,9 @@ const CandlestickShape = (props: any) => {
   );
 };
 
-export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrollOffset }: BottomChartProps) {
+export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrollOffset, symbol }: BottomChartProps) {
+  const hlStore = useHLineStore();
+
   const chartData = useMemo(() => {
     if (data.length === 0) return [];
     
@@ -78,6 +112,9 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
       : null;
     const twoPoleData = activeIndicators.TWOPOLE
       ? calculateTwoPole(data, settings.TWOPOLE_FILTER_LENGTH)
+      : null;
+    const msmtData = activeIndicators.MSMT
+      ? calculateMSMT(data, settings.MSMT_ATR_LENGTH, settings.MSMT_ATR_MULT, settings.MSMT_LEFT_BARS, settings.MSMT_RIGHT_BARS)
       : null;
 
     const startIndex = Math.max(0, data.length - zoomLevel - scrollOffset);
@@ -115,8 +152,39 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
         }
       }
 
+      let msmtTrailingUp = null;
+      let msmtTrailingDown = null;
+      let msmtAreaUp = null;
+      let msmtAreaDown = null;
+      let msmtChochArrow = null;
+      let msmtChochType = null;
+      let msmtTargets = [];
+      
+      if (msmtData) {
+        if (msmtData.trailingLine[i] !== null) {
+          if (msmtData.trailingDir[i] === 1) {
+             msmtTrailingUp = msmtData.trailingLine[i];
+             msmtAreaUp = [msmtTrailingUp, d.close];
+          } else if (msmtData.trailingDir[i] === -1) {
+             msmtTrailingDown = msmtData.trailingLine[i];
+             msmtAreaDown = [d.close, msmtTrailingDown];
+          }
+        }
+        if (msmtData.chochLine[i] !== null) {
+          msmtChochType = msmtData.chochLine[i];
+          msmtChochArrow = msmtChochType === 'bull' ? d.low - ((d.high - d.low) * 0.15) : d.high + ((d.high - d.low) * 0.15);
+        }
+        msmtTargets = msmtData.activeTargets[i] || [];
+      }
+
+      const flatTargets: Record<string, number> = {};
+      msmtTargets.forEach(t => {
+        flatTargets[`msmtTarget${t.level}`] = t.price;
+      });
+
       return {
         ...d,
+        ...flatTargets,
         time: timeStr,
         candleBody: [Math.min(d.open, d.close), Math.max(d.open, d.close)],
         ma: maData[i] !== undefined && !isNaN(maData[i]) ? maData[i] : null,
@@ -145,7 +213,14 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
         tpBullArrow,
         tpBearArrow,
         tpInv,
-        tpInvX
+        tpInvX,
+        msmtTrailingUp,
+        msmtTrailingDown,
+        msmtAreaUp,
+        msmtAreaDown,
+        msmtChochArrow,
+        msmtChochType,
+        msmtTargets
       };
     });
 
@@ -156,7 +231,8 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
          ma: null, rsi: null, bbUpper: null, bbLower: null, psar: null, stochK: null, stochD: null,
          fibUpper50: null, fibUpper618: null, fibUpper786: null, fibLower50: null, fibLower618: null, fibLower786: null, fibWmaBull: null, fibWmaBear: null, fibWma: null,
          envUpper: null, envLower: null,
-         tpBullArrow: null, tpBearArrow: null, tpInv: null, tpInvX: null
+         tpBullArrow: null, tpBearArrow: null, tpInv: null, tpInvX: null,
+         msmtTrailingUp: null, msmtTrailingDown: null, msmtAreaUp: null, msmtAreaDown: null, msmtChochArrow: null, msmtChochType: null, msmtTargets: []
        } as any);
     }
 
@@ -196,10 +272,29 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
     }
   }
 
+  if (activeIndicators.MSMT) {
+    chartData.forEach((d: any) => {
+       if (d.msmtTrailingUp !== null && typeof d.msmtTrailingUp === 'number') {
+          minLow = Math.min(minLow, d.msmtTrailingUp);
+          maxHigh = Math.max(maxHigh, d.msmtTrailingUp);
+       }
+       if (d.msmtTrailingDown !== null && typeof d.msmtTrailingDown === 'number') {
+          minLow = Math.min(minLow, d.msmtTrailingDown);
+          maxHigh = Math.max(maxHigh, d.msmtTrailingDown);
+       }
+       if (d.msmtTargets && d.msmtTargets.length > 0) {
+          d.msmtTargets.forEach((t: any) => {
+             minLow = Math.min(minLow, t.price);
+             maxHigh = Math.max(maxHigh, t.price);
+          });
+       }
+    });
+  }
+
   const yDomain = [minLow - padding, maxHigh + padding];
 
   return (
-    <div className="w-full h-full relative">
+    <div className={`w-full h-full relative ${hlStore.drawMode ? 'cursor-crosshair' : ''}`}>
       <div className="absolute top-2 left-2 z-20 flex items-center gap-2">
         <span className="text-[9px] font-bold text-neutral-500 uppercase tracking-wider bg-neutral-900/50 px-2 py-0.5 rounded">
           Price + Indicators
@@ -208,6 +303,16 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
 
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={chartData} margin={{ top: 5, right: 0, left: 0, bottom: -15 }} syncId="trading-charts">
+          <defs>
+            <linearGradient id="colorMsmtBull" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={settings.colors.msmtTrailingUp || "#22c55e"} stopOpacity={0.6}/>
+                <stop offset="95%" stopColor={settings.colors.msmtTrailingUp || "#22c55e"} stopOpacity={0.0}/>
+            </linearGradient>
+            <linearGradient id="colorMsmtBear" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={settings.colors.msmtTrailingDown || "#ec4899"} stopOpacity={0.0}/>
+                <stop offset="95%" stopColor={settings.colors.msmtTrailingDown || "#ec4899"} stopOpacity={0.6}/>
+            </linearGradient>
+          </defs>
           <XAxis dataKey="time" stroke="#333" tick={false} axisLine={false} />
           
           <YAxis 
@@ -318,6 +423,11 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
               </>
           )}
 
+          {/* Horizontal Lines */}
+          <Customized component={<HorizontalLinesOverlay symbol={symbol} />} />
+
+          <Customized component={<MSMTOverlay data={chartData} />} />
+
           {activeIndicators.TWOPOLE && (
               <>
               {settings.visibility.twopoleInvalidation && (
@@ -334,10 +444,29 @@ export function BottomChart({ data, activeIndicators, settings, zoomLevel, scrol
               )}
               </>
           )}
+          {activeIndicators.MSMT && (
+              <>
+              {settings.visibility.msmtTrailingLine && (
+                  <>
+                  <Area yAxisId="main" type="stepAfter" dataKey="msmtAreaUp" fill="url(#colorMsmtBull)" stroke="none" connectNulls={false} isAnimationActive={false} />
+                  <Area yAxisId="main" type="stepAfter" dataKey="msmtAreaDown" fill="url(#colorMsmtBear)" stroke="none" connectNulls={false} isAnimationActive={false} />
+                  <Line yAxisId="main" type="stepAfter" dataKey="msmtTrailingUp" stroke={settings.colors.msmtTrailingUp || "#22c55e"} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} name="Trailing Up" />
+                  <Line yAxisId="main" type="stepAfter" dataKey="msmtTrailingDown" stroke={settings.colors.msmtTrailingDown || "#ec4899"} strokeWidth={2} dot={false} connectNulls={false} isAnimationActive={false} name="Trailing Dn" />
+                  <Scatter yAxisId="main" dataKey="msmtChochArrow" shape={(props: any) => props.payload.msmtChochArrow === null ? null : <text x={props.cx} y={props.cy} fill={props.payload.msmtChochType === 'bull' ? (settings.colors.msmtTrailingUp || "#22c55e") : (settings.colors.msmtTrailingDown || "#ec4899")} fontSize={10} fontWeight="bold" textAnchor="middle" alignmentBaseline={props.payload.msmtChochType === 'bull' ? "text-before-edge" : "text-after-edge"}>CHoCH</text>} isAnimationActive={false} />
+                  </>
+              )}
+              {settings.visibility.msmtTargets && (
+                  <>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(level => (
+                    <Line key={`msmtT-${level}`} yAxisId="main" type="stepAfter" dataKey={`msmtTarget${level}`} stroke={settings.colors.msmtTarget || "#eab308"} strokeWidth={1} strokeDasharray="2 2" dot={false} connectNulls={false} isAnimationActive={false} name={`Target ${level}`} />
+                  ))}
+                  </>
+              )}
+              </>
+          )}
           
         </ComposedChart>
       </ResponsiveContainer>
     </div>
   );
 }
-
