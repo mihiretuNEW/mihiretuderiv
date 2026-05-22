@@ -4,6 +4,7 @@ export interface CandleData {
   high: number;
   low: number;
   close: number;
+  volume: number;
 }
 
 export interface GTATrendResult {
@@ -871,5 +872,294 @@ export function calculateNWEnv(data: CandleData[], h = 8, mult = 3.0) {
   return { base, upper, lower, buySignal, sellSignal };
 }
 
+export function calculateTrendlinesWithBreaks(data: CandleData[], length = 14, mult = 1.0) {
+  const results = data.map(() => ({ 
+    upper: null as number | null, 
+    lower: null as number | null 
+  }));
 
+  const stdevs = new Float64Array(data.length);
+  let sum = 0;
+  let sumSq = 0;
 
+  for (let i = 0; i < data.length; i++) {
+    const c = data[i].close;
+    sum += c;
+    sumSq += c * c;
+
+    if (i >= length) {
+      const oldC = data[i - length].close;
+      sum -= oldC;
+      sumSq -= oldC * oldC;
+    }
+
+    if (i >= length - 1) {
+      const mean = sum / length;
+      const variance = (sumSq / length) - (mean * mean);
+      stdevs[i] = Math.sqrt(Math.max(0, variance));
+    }
+  }
+
+  let currentUpper: number | null = null;
+  let currentLower: number | null = null;
+  let upSlope = 0;
+  let dnSlope = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const pivotIdx = i - length;
+    let isPh = false;
+    let isPl = false;
+    let phVal = 0;
+    let plVal = 0;
+
+    if (pivotIdx >= length) {
+      const highCandidate = data[pivotIdx].high;
+      let isPeak = true;
+      for (let j = i - 2 * length; j <= i; j++) {
+        if (j < pivotIdx && data[j].high > highCandidate) {
+          isPeak = false; break;
+        }
+        if (j > pivotIdx && data[j].high >= highCandidate) {
+          isPeak = false; break;
+        }
+      }
+      if (isPeak) {
+        isPh = true;
+        phVal = highCandidate;
+      }
+
+      const lowCandidate = data[pivotIdx].low;
+      let isDip = true;
+      for (let j = i - 2 * length; j <= i; j++) {
+        if (j < pivotIdx && data[j].low < lowCandidate) {
+          isDip = false; break;
+        }
+        if (j > pivotIdx && data[j].low <= lowCandidate) {
+          isDip = false; break;
+        }
+      }
+      if (isDip) {
+        isPl = true;
+        plVal = lowCandidate;
+      }
+    }
+
+    const currentSlope = (stdevs[i] * mult) / length;
+
+    if (isPh) {
+      upSlope = currentSlope;
+      currentUpper = phVal - length * upSlope;
+      if (pivotIdx > 0) results[pivotIdx - 1].upper = null; // visual break
+      for (let k = 0; k <= length; k++) {
+        results[pivotIdx + k].upper = phVal - k * upSlope;
+      }
+    } else if (currentUpper !== null) {
+      currentUpper -= upSlope;
+      results[i].upper = currentUpper;
+    }
+
+    if (isPl) {
+      dnSlope = currentSlope;
+      currentLower = plVal + length * dnSlope;
+      if (pivotIdx > 0) results[pivotIdx - 1].lower = null; // visual break
+      for (let k = 0; k <= length; k++) {
+        results[pivotIdx + k].lower = plVal + k * dnSlope;
+      }
+    } else if (currentLower !== null) {
+      currentLower += dnSlope;
+      results[i].lower = currentLower;
+    }
+  }
+
+  return results;
+}
+
+export function calculateOrderBlocks(
+  data: CandleData[],
+  volumePivotLength: number = 5,
+  maxBullishOb: number = 3,
+  maxBearishOb: number = 3,
+  mitigationMethod: "wick" | "close" = "wick"
+) {
+  const results = data.map(() => ({
+    bull_ob_top: Array(maxBullishOb).fill(null),
+    bull_ob_bottom: Array(maxBullishOb).fill(null),
+    bear_ob_top: Array(maxBearishOb).fill(null),
+    bear_ob_bottom: Array(maxBearishOb).fill(null),
+  }));
+
+  if (data.length < volumePivotLength * 2 + 1) return results;
+
+  interface OB {
+    startIndex: number;
+    breakoutIndex: number;
+    endIndex: number;
+    top: number;
+    bottom: number;
+  }
+
+  const bullOBs: OB[] = [];
+  const bearOBs: OB[] = [];
+
+  for (let p = volumePivotLength; p < data.length - volumePivotLength; p++) {
+    // 1. Identify volume peaks (pivot)
+    let isPeak = true;
+    for (let j = p - volumePivotLength; j <= p + volumePivotLength; j++) {
+      if (j !== p && (data[j].volume || 0) >= (data[p].volume || 0)) {
+        isPeak = false;
+        break;
+      }
+    }
+    if (!isPeak) continue;
+
+    // 2. Breakout Confirmation
+    let breakoutIndex = -1;
+    let type: 'bull' | 'bear' | null = null;
+    let top = 0;
+    let bottom = 0;
+
+    for (let i = p + 1; i < data.length; i++) {
+      if (data[i].close > data[p].high) {
+        breakoutIndex = i;
+        type = 'bull';
+        top = (data[p].high + data[p].low) / 2;
+        bottom = data[p].low;
+        break;
+      } else if (data[i].close < data[p].low) {
+        breakoutIndex = i;
+        type = 'bear';
+        top = data[p].high;
+        bottom = (data[p].high + data[p].low) / 2;
+        break;
+      }
+    }
+
+    if (breakoutIndex !== -1 && type) {
+      // 3. Track Mitigation (Must survive unmitigated until breakout to be valid)
+      let mitigationIndex = data.length - 1;
+      let valid = true;
+      for (let i = p + 1; i < data.length; i++) {
+        let mitigated = false;
+        if (type === 'bull') {
+          mitigated = mitigationMethod === "wick" ? data[i].low <= top : data[i].close < bottom;
+        } else {
+          mitigated = mitigationMethod === "wick" ? data[i].high >= bottom : data[i].close > top;
+        }
+        
+        if (mitigated) {
+          if (i < breakoutIndex) valid = false;
+          mitigationIndex = i;
+          break;
+        }
+      }
+
+      if (valid) {
+        if (type === 'bull') bullOBs.push({ startIndex: p, breakoutIndex, endIndex: mitigationIndex, top, bottom });
+        else bearOBs.push({ startIndex: p, breakoutIndex, endIndex: mitigationIndex, top, bottom });
+      }
+    }
+  }
+
+  const assignLanes = (obs: OB[], maxLanes: number, topKey: 'bull_ob_top' | 'bear_ob_top', bottomKey: 'bull_ob_bottom' | 'bear_ob_bottom') => {
+    let currentLaneOBs: (OB | null)[] = Array(maxLanes).fill(null);
+    for (let i = 0; i < data.length; i++) {
+        for (let l = 0; l < maxLanes; l++) {
+            if (currentLaneOBs[l] && currentLaneOBs[l]!.endIndex < i) {
+                currentLaneOBs[l] = null;
+            }
+        }
+
+        const startingOBs = obs.filter(ob => ob.startIndex === i);
+        for (const newOb of startingOBs) {
+            let placed = false;
+            for (let l = 0; l < maxLanes; l++) {
+                if (!currentLaneOBs[l]) {
+                    currentLaneOBs[l] = newOb;
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                let oldestLane = 0;
+                let oldestStart = Infinity;
+                for (let l = 0; l < maxLanes; l++) {
+                    if (currentLaneOBs[l]!.startIndex < oldestStart) {
+                        oldestStart = currentLaneOBs[l]!.startIndex;
+                        oldestLane = l;
+                    }
+                }
+                currentLaneOBs[oldestLane] = newOb;
+            }
+        }
+        
+        for (let l = 0; l < maxLanes; l++) {
+            if (currentLaneOBs[l]) {
+                results[i][topKey][l] = currentLaneOBs[l]!.top;
+                results[i][bottomKey][l] = currentLaneOBs[l]!.bottom;
+            }
+        }
+    }
+  };
+
+  assignLanes(bullOBs, maxBullishOb, 'bull_ob_top', 'bull_ob_bottom');
+  assignLanes(bearOBs, maxBearishOb, 'bear_ob_top', 'bear_ob_bottom');
+
+  return results;
+}
+
+export function calculateCorrelatedSineOscillator(
+  data: CandleData[],
+  cyclePeriod: number = 20,
+  phaseMultiplier: number = 1.0,
+  showSignals: boolean = true
+) {
+  const results = data.map(() => ({
+    oscillator: 0,
+    buySignal: null as number | null,
+    sellSignal: null as number | null,
+  }));
+
+  const detrended = new Float64Array(data.length);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    sum += data[i].close;
+    if (i >= cyclePeriod) sum -= data[i - cyclePeriod].close;
+    const count = Math.min(i + 1, cyclePeriod);
+    const sma = sum / count;
+    detrended[i] = data[i].close - sma;
+  }
+
+  const omega = (2 * Math.PI) / cyclePeriod;
+  const cosOmega = Math.cos(omega);
+  const sinOmega = Math.sin(omega);
+
+  let prevR = 0;
+  let prevI = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const x_i = detrended[i];
+    const x_i_P = i >= cyclePeriod ? detrended[i - cyclePeriod] : 0;
+    
+    const R_i = prevR * cosOmega - prevI * sinOmega + x_i - x_i_P;
+    const I_i = prevR * sinOmega + prevI * cosOmega;
+    
+    prevR = R_i;
+    prevI = I_i;
+    
+    const phaseAngle = Math.atan2(I_i, R_i) * phaseMultiplier;
+    const sineOscillator = Math.sin(phaseAngle);
+    
+    results[i].oscillator = sineOscillator;
+    
+    if (i > 0 && showSignals) {
+      const prevObs = results[i - 1].oscillator;
+      if (prevObs <= 0 && sineOscillator > 0) {
+        results[i].buySignal = 1; 
+      } else if (prevObs >= 0 && sineOscillator < 0) {
+        results[i].sellSignal = -1;
+      }
+    }
+  }
+
+  return results;
+}

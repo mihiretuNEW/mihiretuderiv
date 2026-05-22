@@ -93,7 +93,7 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
     if (data.length === 0 || !calcData) return [];
     
     // Unpack from worker result
-    const { gtaData, scalpingData, maData, rsiData, bbData, psarData, stochRsiData, atrFibData, maEnvData, twoPoleData, msmtData, utbotData, nwenvData, waeData } = calcData;
+    const { gtaData, scalpingData, trendlinesBreakData, maData, rsiData, bbData, psarData, stochRsiData, atrFibData, maEnvData, twoPoleData, msmtData, utbotData, nwenvData, waeData, csoData, obData } = calcData;
 
     const startIndex = Math.max(0, data.length - zoomLevel - scrollOffset);
     const endIndex = Math.max(0, data.length - scrollOffset);
@@ -207,7 +207,18 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
       
       let execSL = null;
       let execTP = null;
-      
+      let csoBuySignal = null;
+      let csoSellSignal = null;
+
+      if (csoData && csoData[i] && settings.CSO_SHOW_SIGNALS) {
+        if (csoData[i].buySignal !== null && csoData[i].buySignal !== undefined) {
+          csoBuySignal = d.low - (d.high - d.low) * 0.15;
+        }
+        if (csoData[i].sellSignal !== null && csoData[i].sellSignal !== undefined) {
+          csoSellSignal = d.high + (d.high - d.low) * 0.15;
+        }
+      }
+
       if (activeIndicators.GTA && activeIndicators.SCALPING) {
         if (gtaBuyArrow !== null && ribbonColor === 'green' && gtaColor === 0) {
           const lowRange = data.slice(Math.max(0, i - 3), i + 1).map(x => x.low);
@@ -233,7 +244,7 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
         flatTargets[`msmtTarget${t.level}`] = t.price;
       });
 
-      return {
+      const result = {
         ...d,
         ...flatTargets,
         time: timeStr,
@@ -286,13 +297,32 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
         gtaBuyArrow,
         gtaSellArrow,
         waeBuyArrow,
-        waeSellArrow
-      };
+        waeSellArrow,
+        tlUpper: trendlinesBreakData?.[i]?.upper ?? null,
+        tlLower: trendlinesBreakData?.[i]?.lower ?? null,
+        csoBuySignal,
+        csoSellSignal
+      } as any;
+
+      if (obData && obData[i]) {
+        for (let j = 0; j < settings.OB_MAX_BULL; j++) {
+           result[`obBull${j}`] = obData[i].bull_ob_top[j] !== null
+              ? [obData[i].bull_ob_bottom[j], obData[i].bull_ob_top[j]]
+              : null;
+        }
+        for (let j = 0; j < settings.OB_MAX_BEAR; j++) {
+           result[`obBear${j}`] = obData[i].bear_ob_top[j] !== null
+              ? [obData[i].bear_ob_bottom[j], obData[i].bear_ob_top[j]]
+              : null;
+        }
+      }
+
+      return result;
     });
 
     const dummyCount = Math.floor(zoomLevel * 0.15);
     for (let i = 0; i < dummyCount; i++) {
-       sliced.push({ 
+       const dummyObj = { 
          time: '', epoch: 0, open: null, close: null, high: null, low: null, candleBody: null, 
          ma: null, rsi: null, bbUpper: null, bbLower: null, psar: null, stochK: null, stochD: null,
          fibUpper50: null, fibUpper618: null, fibUpper786: null, fibLower50: null, fibLower618: null, fibLower786: null, fibWmaBull: null, fibWmaBear: null, fibWma: null,
@@ -302,8 +332,14 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
          utbotTs: null, utbotBuyArrow: null, utbotSellArrow: null,
          nwenvBase: null, nwenvUpper: null, nwenvLower: null, nwenvBuyArrow: null, nwenvSellArrow: null,
          waeBuyArrow: null, waeSellArrow: null,
-         execSL: null, execTP: null, gtaColor: null, gtaBuyArrow: null, gtaSellArrow: null
-       } as any);
+         execSL: null, execTP: null, gtaColor: null, gtaBuyArrow: null, gtaSellArrow: null,
+         tlUpper: null, tlLower: null,
+         csoBuySignal: null, csoSellSignal: null
+       } as any;
+
+       for (let j = 0; j < settings.OB_MAX_BULL; j++) dummyObj[`obBull${j}`] = null;
+       for (let j = 0; j < settings.OB_MAX_BEAR; j++) dummyObj[`obBear${j}`] = null;
+       sliced.push(dummyObj);
     }
 
     return sliced;
@@ -573,6 +609,21 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
               </>
           )}
 
+          {activeIndicators.OB && Array.from({length: settings.OB_MAX_BULL}).map((_, j) => (
+             <Area key={`ob-bull-${j}`} yAxisId="main" type="linear" dataKey={`obBull${j}`} stroke="none" fill="#10b981" fillOpacity={0.15} connectNulls={false} isAnimationActive={false} />
+          ))}
+
+          {activeIndicators.OB && Array.from({length: settings.OB_MAX_BEAR}).map((_, j) => (
+             <Area key={`ob-bear-${j}`} yAxisId="main" type="linear" dataKey={`obBear${j}`} stroke="none" fill="#ef4444" fillOpacity={0.15} connectNulls={false} isAnimationActive={false} />
+          ))}
+
+          {activeIndicators.CSO && settings.CSO_SHOW_SIGNALS && (
+              <>
+                  <Scatter yAxisId="main" dataKey="csoBuySignal" shape={(props: any) => props.payload.csoBuySignal === null ? null : <text x={props.cx} y={props.cy} fill="#22c55e" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">▲</text>} isAnimationActive={false} />
+                  <Scatter yAxisId="main" dataKey="csoSellSignal" shape={(props: any) => props.payload.csoSellSignal === null ? null : <text x={props.cx} y={props.cy} fill="#ef4444" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-after-edge">▼</text>} isAnimationActive={false} />
+              </>
+          )}
+
           {activeIndicators.GTA && (
               <>
                 <Scatter yAxisId="main" dataKey="gtaBuyArrow" shape={(props: any) => props.payload.gtaBuyArrow === null ? null : <text x={props.cx} y={props.cy} fill="#3b82f6" fontSize={16} fontWeight="bold" textAnchor="middle" alignmentBaseline="text-before-edge">▲</text>} isAnimationActive={false} />
@@ -584,6 +635,13 @@ function BottomChartComponent({ data, activeIndicators, settings, zoomLevel, scr
               <>
                 <Line yAxisId="main" type="stepAfter" dataKey="execSL" stroke="#ef4444" strokeWidth={2} strokeDasharray="3 3" dot={false} connectNulls={false} isAnimationActive={false} name="Stop Loss" />
                 <Line yAxisId="main" type="stepAfter" dataKey="execTP" stroke="#22c55e" strokeWidth={2} strokeDasharray="3 3" dot={false} connectNulls={false} isAnimationActive={false} name="Take Profit" />
+              </>
+          )}
+
+          {activeIndicators.TRENDLINES_BREAKS && (
+              <>
+                <Line yAxisId="main" type="monotone" dataKey="tlUpper" stroke="#10b981" strokeWidth={settings.TRENDLINES_STYLE === 'solid' ? 1 : 1.5} strokeDasharray={settings.TRENDLINES_STYLE === 'solid' ? "0" : "4 4"} strokeOpacity={settings.TRENDLINES_STYLE === 'solid' ? 0.8 : 1} dot={false} connectNulls={false} isAnimationActive={false} name="Trendline Up" />
+                <Line yAxisId="main" type="monotone" dataKey="tlLower" stroke="#ef4444" strokeWidth={settings.TRENDLINES_STYLE === 'solid' ? 1 : 1.5} strokeDasharray={settings.TRENDLINES_STYLE === 'solid' ? "0" : "4 4"} strokeOpacity={settings.TRENDLINES_STYLE === 'solid' ? 0.8 : 1} dot={false} connectNulls={false} isAnimationActive={false} name="Trendline Dn" />
               </>
           )}
           

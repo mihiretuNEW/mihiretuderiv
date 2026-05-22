@@ -4,7 +4,7 @@ import { CandleData, calculateSMI, calculateStochRSI, calculateZMACD, calculateS
 import type { IndicatorSettings } from '../App';
 
 interface OscillatorChartProps {
-  type: 'SMI' | 'STOCHRSI' | 'ZMACD' | 'STDSMI' | 'TWOPOLE' | 'WAE';
+  type: 'SMI' | 'STOCHRSI' | 'ZMACD' | 'STDSMI' | 'TWOPOLE' | 'WAE' | 'SCALPING' | 'CSO';
   data: CandleData[];
   settings: IndicatorSettings;
   zoomLevel: number;
@@ -64,6 +64,14 @@ function OscillatorChartComponent({ type, data, settings, zoomLevel, scrollOffse
         item.val = indData[i]?.val !== undefined ? indData[i].val : null;
         item.color = indData[i]?.color !== undefined ? indData[i].color : null;
       }
+      if (type === 'CSO') {
+        item.osc = indData[i]?.oscillator !== undefined && !isNaN(indData[i].oscillator) ? indData[i].oscillator : null;
+        if (item.osc !== null) {
+          item.barData = [0, item.osc];
+          item.oscBull = item.osc >= 0 ? item.osc : null;
+          item.oscBear = item.osc <= 0 ? item.osc : null;
+        }
+      }
       return item;
     });
 
@@ -81,7 +89,8 @@ function OscillatorChartComponent({ type, data, settings, zoomLevel, scrollOffse
     STDSMI: { title: 'Standard SMI', domain: ['auto', 'auto'], refs: [40, -40], lines: [{key: 'smi', name: 'SMI', color: settings.colors.stdSmiSmi, vis: settings.visibility.stdSmiSmi}, {key: 'signal', name: 'Signal', color: settings.colors.stdSmiSignal, vis: settings.visibility.stdSmiSignal}] },
     TWOPOLE: { title: 'Two-Pole Oscillator', domain: [-1.0, 1.0], customRefs: [{y: 1, c: '#22c55e'}, {y: 0.5, c: '#eab308'}, {y: 0, c: '#ef4444'}, {y: -0.5, c: '#eab308'}, {y: -1, c: '#22c55e'}], lines: [{key: 'signal', name: 'Signal', color: settings.colors.twopoleSignal, vis: settings.visibility.twopoleSignal}], dynamicHist: true },
     WAE: { title: 'Waddah Attar Explosion', domain: ['auto', 'auto'], lines: [{key: 'waeExplosion', name: 'Explosion', color: settings.colors.waeExplosion, vis: settings.visibility.waeLines}, {key: 'waeDeadZone', name: 'DeadZone', color: settings.colors.waeDeadZone, vis: settings.visibility.waeLines}], waeHist: true },
-    SCALPING: { title: 'Simple Scalping Ribbon', domain: [-1.5, 1.5], simpleHist: true }
+    SCALPING: { title: 'Simple Scalping Ribbon', domain: [-1.5, 1.5], simpleHist: true },
+    CSO: { title: 'Correlated Sine Oscillator', domain: [-1.1, 1.1], customRefs: [{y: 0, c: '#444'}], csoHist: true }
   }[type];
 
   return (
@@ -152,6 +161,29 @@ function OscillatorChartComponent({ type, data, settings, zoomLevel, scrollOffse
                 <Cell key={`cell-${index}`} fill={entry.waeColor === 1 ? settings.colors.waeGreen : settings.colors.waeRed} fillOpacity={0.8} />
               ))}
             </Bar>
+          )}
+
+          {config.csoHist && (
+            <>
+              <defs>
+                <linearGradient id="csoBull" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.8}/>
+                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0.1}/>
+                </linearGradient>
+                <linearGradient id="csoBear" x1="0" y1="1" x2="0" y2="0">
+                  <stop offset="0%" stopColor="#ef4444" stopOpacity={0.8}/>
+                  <stop offset="100%" stopColor="#ef4444" stopOpacity={0.1}/>
+                </linearGradient>
+              </defs>
+              <Bar yAxisId="ind" dataKey="barData" isAnimationActive={false} name="Oscillator Area">
+                {chartData.map((entry: any, index) => {
+                  let fill = entry.osc >= 0 ? "url(#csoBull)" : "url(#csoBear)";
+                  return <Cell key={`cell-${index}`} fill={fill} />;
+                })}
+              </Bar>
+              <Line key="oscBull" yAxisId="ind" type="monotone" dataKey="oscBull" stroke="#22c55e" strokeWidth={2} dot={false} isAnimationActive={false} name="Bull" connectNulls={false} />
+              <Line key="oscBear" yAxisId="ind" type="monotone" dataKey="oscBear" stroke="#ef4444" strokeWidth={2} dot={false} isAnimationActive={false} name="Bear" connectNulls={false} />
+            </>
           )}
 
           {config.lines?.map((line: any) => line.vis && (

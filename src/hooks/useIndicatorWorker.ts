@@ -57,7 +57,7 @@ export function useIndicatorWorker(
           payload: { data, settings, activeIndicators }
         });
 
-        const activeOscillators = ['SMI', 'STOCHRSI', 'ZMACD', 'STDSMI', 'TWOPOLE', 'WAE', 'SCALPING'].filter(k => activeIndicators[k]);
+        const activeOscillators = ['SMI', 'STOCHRSI', 'ZMACD', 'STDSMI', 'TWOPOLE', 'WAE', 'SCALPING', 'CSO'].filter(k => activeIndicators[k]);
         activeOscillators.forEach(osc => {
           workerRef.current?.postMessage({
             type: 'CALCULATE_OSCILLATOR',

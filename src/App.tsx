@@ -8,6 +8,9 @@ import { OscillatorChart } from './components/OscillatorChart';
 import { useIndicatorWorker } from './hooks/useIndicatorWorker';
 
 export type IndicatorSettings = {
+  TRENDLINES_LENGTH: number;
+  TRENDLINES_MULT: number;
+  TRENDLINES_STYLE: string;
   GTA_LONG: number;
   GTA_MID: number;
   GTA_SHORT: number;
@@ -53,6 +56,13 @@ export type IndicatorSettings = {
   WAE_SLOW: number;
   WAE_CHANNEL: number;
   WAE_MULT: number;
+  CSO_PERIOD: number;
+  CSO_MULT: number;
+  CSO_SHOW_SIGNALS: boolean;
+  OB_PIVOT_LENGTH: number;
+  OB_MAX_BULL: number;
+  OB_MAX_BEAR: number;
+  OB_MITIGATION_METHOD: string;
   colors: Record<string, string>;
   visibility: Record<string, boolean>;
 };
@@ -97,7 +107,10 @@ export default function App() {
     MSMT: true,
     UTBOT: true,
     NWENV: false,
-    WAE: true
+    WAE: true,
+    CSO: true,
+    OB: true,
+    TRENDLINES_BREAKS: true
   };
 
   const [activeIndicators, setActiveIndicators] = useState<Record<string, boolean>>(() => {
@@ -109,6 +122,9 @@ export default function App() {
   });
 
   const defaultSettings: IndicatorSettings = {
+    TRENDLINES_LENGTH: 14,
+    TRENDLINES_MULT: 1.0,
+    TRENDLINES_STYLE: 'dot',
     GTA_LONG: 21,
     GTA_MID: 13,
     GTA_SHORT: 6,
@@ -154,6 +170,13 @@ export default function App() {
     ATRFIB_WMA_PERIOD: 100,
     ATRFIB_ATR_PERIOD: 100,
     ATRFIB_MULTIPLIER: 3,
+    CSO_PERIOD: 20,
+    CSO_MULT: 1.0,
+    CSO_SHOW_SIGNALS: true,
+    OB_PIVOT_LENGTH: 5,
+    OB_MAX_BULL: 3,
+    OB_MAX_BEAR: 3,
+    OB_MITIGATION_METHOD: 'wick',
     colors: {
       ma: '#ec4899', rsi: '#a855f7', bbUpper: '#14b8a6', bbLower: '#14b8a6', psar: '#eab308',
       smiSmi: '#06b6d4', smiSignal: '#f59e0b', smiHistogramUp: '#10b981', smiHistogramDown: '#ef4444',
@@ -317,7 +340,7 @@ export default function App() {
     }
   };
 
-  const activeOscillators = ['SMI', 'STOCHRSI', 'ZMACD', 'STDSMI', 'TWOPOLE', 'WAE', 'SCALPING'].filter(k => activeIndicators[k]);
+  const activeOscillators = ['SMI', 'STOCHRSI', 'ZMACD', 'STDSMI', 'TWOPOLE', 'WAE', 'SCALPING', 'CSO'].filter(k => activeIndicators[k]);
 
   return (
     <div className="flex h-screen bg-[#0a0a0a] text-neutral-200 overflow-hidden font-sans">

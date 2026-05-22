@@ -70,7 +70,8 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
           open: c.open,
           high: c.high,
           low: c.low,
-          close: c.close
+          close: c.close,
+          volume: c.tick_volume || c.volume || (c.high - c.low)
         }));
 
         if (isFetchingHistoryRef.current && candlesRef.current.length > 0) {
@@ -92,7 +93,8 @@ export function useDerivWS(symbol: string, granularity: number, initialCount: nu
           open: parseFloat(tick.open),
           high: parseFloat(tick.high),
           low: parseFloat(tick.low),
-          close: parseFloat(tick.close)
+          close: parseFloat(tick.close),
+          volume: tick.tick_volume || tick.volume || (parseFloat(tick.high) - parseFloat(tick.low))
         };
         
         const prev = candlesRef.current;

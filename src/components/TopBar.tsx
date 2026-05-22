@@ -135,8 +135,11 @@ export function TopBar({
                      ind === 'UTBOT' ? 'UT Bot Alerts' :
                      ind === 'NWENV' ? 'Nadaraya-Watson Envelope' :
                      ind === 'WAE' ? 'Waddah Attar Explosion' :
+                     ind === 'CSO' ? 'Correlated Sine Oscillator' :
+                     ind === 'OB' ? 'Order Block Detector' :
                      ind === 'GTA' ? 'GTA Trend Filter' :
                      ind === 'SCALPING' ? 'Simple Scalping Ribbon' :
+                     ind === 'TRENDLINES_BREAKS' ? 'Trendlines with Breaks' :
                      ind === 'PSAR' ? 'Parabolic SAR' : ind}
                   </span>
                   {activeIndicators[ind] && <div className="w-2 h-2 rounded-full bg-blue-500" />}
@@ -235,6 +238,20 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                 </div>
 
                 <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#10b981]">Trendlines with Breaks</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Length <input type="number" value={settings.TRENDLINES_LENGTH} onChange={e => update('TRENDLINES_LENGTH', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Slope Multiplier <input type="number" step="0.1" value={settings.TRENDLINES_MULT} onChange={e => update('TRENDLINES_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Line Style 
+                      <select value={settings.TRENDLINES_STYLE || 'dot'} onChange={e => setSettings((s: any) => ({ ...s, TRENDLINES_STYLE: e.target.value }))} className="w-[72px] bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white">
+                        <option value="dot">Dotted</option>
+                        <option value="solid">Solid</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
                   <h4 className="text-sm font-medium text-cyan-400">GTA Trend Filter</h4>
                   <div className="grid grid-cols-1 gap-2">
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Long EMA <input type="number" value={settings.GTA_LONG} onChange={e => update('GTA_LONG', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
@@ -291,6 +308,30 @@ function SettingsModal({ settings, setSettings, onClose }: any) {
                   <div className="grid grid-cols-1 gap-2">
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Bandwidth (h) <input type="number" value={settings.NWENV_H} onChange={e => update('NWENV_H', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
                     <label className="text-xs text-neutral-400 flex justify-between items-center">Multiplier <input type="number" step="0.1" value={settings.NWENV_MULT} onChange={e => update('NWENV_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#22c55e]">Order Block Detector</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Volume Pivot Length <input type="number" value={settings.OB_PIVOT_LENGTH} onChange={e => update('OB_PIVOT_LENGTH', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Max Bullish Blocks <input type="number" value={settings.OB_MAX_BULL} onChange={e => update('OB_MAX_BULL', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Max Bearish Blocks <input type="number" value={settings.OB_MAX_BEAR} onChange={e => update('OB_MAX_BEAR', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Mitigation Method
+                      <select value={settings.OB_MITIGATION_METHOD} onChange={e => setSettings((s: any) => ({ ...s, OB_MITIGATION_METHOD: e.target.value }))} className="w-20 bg-neutral-900 border border-neutral-800 rounded px-1 py-1 text-right text-white">
+                        <option value="wick">Wick</option>
+                        <option value="close">Close</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2 border border-neutral-800 p-3 rounded bg-neutral-900/50">
+                  <h4 className="text-sm font-medium text-[#22c55e]">Correlated Sine Oscillator</h4>
+                  <div className="grid grid-cols-1 gap-2">
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Cycle Period <input type="number" value={settings.CSO_PERIOD} onChange={e => update('CSO_PERIOD', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center">Phase Multiplier <input type="number" step="0.1" value={settings.CSO_MULT} onChange={e => update('CSO_MULT', e.target.value)} className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-right text-white" /></label>
+                    <label className="text-xs text-neutral-400 flex justify-between items-center text-left">Show Signals <input type="checkbox" checked={settings.CSO_SHOW_SIGNALS} onChange={e => setSettings((s: any) => ({ ...s, CSO_SHOW_SIGNALS: e.target.checked }))} className="w-4 h-4 bg-neutral-900 border border-neutral-800 rounded mx-1" /></label>
                   </div>
                 </div>
 
